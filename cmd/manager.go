@@ -17,7 +17,7 @@ func NewCmdManager() *cobra.Command {
 		Short: "Manage booting and tearing down sandboxes",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			log := ctx.Value("log").(*zap.Logger)
+			log := ctx.Value(logKey).(*zap.Logger)
 
 			socket, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 			if err != nil {

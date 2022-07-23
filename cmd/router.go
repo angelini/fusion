@@ -14,8 +14,9 @@ func NewCmdRouter() *cobra.Command {
 		Short: "Route requests to running sandboxes",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
-			log := ctx.Value("log").(*zap.Logger)
+			log := ctx.Value(logKey).(*zap.Logger)
 
+			log.Info("start router", zap.Int("port", port))
 			return router.StartServer(ctx, log, port)
 		},
 	}

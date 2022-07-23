@@ -10,7 +10,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-var ()
+type configKey string
+
+var logKey = configKey("log")
 
 func NewCmdRoot() *cobra.Command {
 	var level *zapcore.Level
@@ -27,7 +29,7 @@ func NewCmdRoot() *cobra.Command {
 			}
 
 			ctx := cmd.Context()
-			cmd.SetContext(context.WithValue(ctx, "log", log))
+			cmd.SetContext(context.WithValue(ctx, logKey, log))
 
 			return nil
 		},
@@ -35,6 +37,7 @@ func NewCmdRoot() *cobra.Command {
 
 	cmd.AddCommand(NewCmdRouter())
 	cmd.AddCommand(NewCmdManager())
+	cmd.AddCommand(NewCmdDebug())
 
 	level = zap.LevelFlag("log-level", zap.DebugLevel, "Log level")
 	cmd.PersistentFlags().AddGoFlag(flag.CommandLine.Lookup("log-level"))

@@ -9,8 +9,8 @@ import (
 )
 
 type NetLocation struct {
-	host string
-	port int
+	Host string
+	Port int
 }
 
 type nodeState struct {
