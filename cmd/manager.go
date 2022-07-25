@@ -29,7 +29,7 @@ func NewCmdManager() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().IntVarP(&port, "port", "p", 5152, "Manager port to listen on")
+	cmd.PersistentFlags().IntVarP(&port, "port", "p", 5152, "Manager port")
 
 	return cmd
 }

@@ -7,6 +7,7 @@ import (
 
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	appsconf "k8s.io/client-go/applyconfigurations/apps/v1"
 	coreconf "k8s.io/client-go/applyconfigurations/core/v1"
 	metaconf "k8s.io/client-go/applyconfigurations/meta/v1"
@@ -18,7 +19,7 @@ const (
 	FIELD_MANAGER = "fusion/manager"
 	NAMESPACE     = "fusion"
 	K8S_CONFIG    = "/etc/rancher/k3s/k3s.yaml"
-	IMAGE         = "fusion:latest"
+	IMAGE         = "localhost/fusion:latest"
 )
 
 func CreateDeployment(ctx context.Context, epoch int64, key string) (NetLocation, error) {
@@ -31,7 +32,14 @@ func CreateDeployment(ctx context.Context, epoch int64, key string) (NetLocation
 		Deployments(NAMESPACE).
 		Apply(ctx, genDeployment(key, IMAGE, epoch), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
 	if err != nil {
-		return NetLocation{}, fmt.Errorf("cannot deploy %v: %w", key, err)
+		return NetLocation{}, fmt.Errorf("cannot apply deployment %v: %w", key, err)
+	}
+
+	_, err = client.CoreV1().
+		Services(NAMESPACE).
+		Apply(ctx, genService(key, epoch), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
+	if err != nil {
+		return NetLocation{}, fmt.Errorf("cannot apply service %v: %w", key, err)
 	}
 
 	return NetLocation{
@@ -52,6 +60,7 @@ func DeleteDeployment(ctx context.Context, key string) error {
 func genDeployment(name, image string, epoch int64) *appsconf.DeploymentApplyConfiguration {
 	labels := map[string]string{
 		"fusion/type":  "node",
+		"fusion/name":  name,
 		"fusion/epoch": strconv.FormatInt(epoch, 10),
 	}
 
@@ -75,16 +84,35 @@ func genDeployment(name, image string, epoch int64) *appsconf.DeploymentApplyCon
 		)
 }
 
+func genService(name string, epoch int64) *coreconf.ServiceApplyConfiguration {
+	labels := map[string]string{
+		"fusion/type":  "node",
+		"fusion/name":  name,
+		"fusion/epoch": strconv.FormatInt(epoch, 10),
+	}
+
+	return coreconf.Service(name, NAMESPACE).
+		WithSpec(
+			coreconf.ServiceSpec().
+				WithSelector(labels).
+				WithPorts(
+					coreconf.ServicePort().
+						WithPort(80).
+						WithTargetPort(intstr.FromInt(5152)),
+				),
+		)
+}
+
 func genContainer(image string) *coreconf.ContainerApplyConfiguration {
 	port := coreconf.ContainerPort().
-		WithContainerPort(8080)
+		WithContainerPort(5152)
 
 	return coreconf.Container().
-		WithName("proc-router").
+		WithName("sandbox").
 		WithImage(image).
 		WithImagePullPolicy(core.PullNever).
 		WithPorts(port).
-		WithCommand("/ko-app/fusion", "router", "-p", "8080")
+		WithCommand("./fusion", "sandbox", "-p", "5152")
 }
 
 func k8sClient() (*kubernetes.Clientset, error) {

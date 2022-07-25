@@ -35,8 +35,9 @@ func NewCmdRoot() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(NewCmdRouter())
 	cmd.AddCommand(NewCmdManager())
+	cmd.AddCommand(NewCmdPodProxy())
+	cmd.AddCommand(NewCmdSandbox())
 	cmd.AddCommand(NewCmdDebug())
 
 	level = zap.LevelFlag("log-level", zap.DebugLevel, "Log level")
