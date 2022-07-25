@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fusion-podproxy
+  labels:
+    name: fusion-podproxy
+    fusion/component: podproxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      fusion/component: podproxy
+  template:
+    metadata:
+      labels:
+        name: fusion-podproxy
+        fusion/component: podproxy
+    spec:
+      containers:
+        - name: fusion-podproxy
+          image: localhost/fusion:latest
+          imagePullPolicy: Never
+          command: ["./fusion"]
+          args: ["podproxy", "-p", "5153"]
+          ports:
+            - containerPort: 5153
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fusion-podproxy-service
+spec:
+  selector:
+    fusion/component: podproxy
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5153

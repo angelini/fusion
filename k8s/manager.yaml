@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fusion-manager
+  labels:
+    name: fusion-manager
+    fusion/component: manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      fusion/component: manager
+  template:
+    metadata:
+      labels:
+        name: fusion-manager
+        fusion/component: manager
+    spec:
+      containers:
+        - name: fusion-manager
+          image: localhost/fusion:latest
+          imagePullPolicy: Never
+          command: ["./fusion"]
+          args: ["manager", "-p", "5152"]
+          ports:
+            -  containerPort: 5152
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fusion-manager-service
+spec:
+  selector:
+    fusion/component: manager
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5152

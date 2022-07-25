@@ -24,6 +24,7 @@ func NewCmdManager() *cobra.Command {
 				return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
 			}
 
+			log.Info("start manager", zap.Int("port", port))
 			server := manager.NewServer(log)
 			return server.Serve(socket)
 		},

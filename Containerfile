@@ -1,7 +1,11 @@
 FROM ubuntu:22.04
 
 RUN apt-get update && \
-    apt-get install -y nodejs && \
+    apt-get install -y \
+        curl \
+        dnsutils \
+        nodejs \
+    && \
     rm -rf /var/lib/apt/lists/*
 
 RUN useradd -ms /bin/bash main

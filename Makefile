@@ -45,10 +45,13 @@ start-k3s:
 	sudo bin/k3s server -c $(ROOT_DIR)/k3s_config.yaml
 
 setup: build
-	$(KC) apply -f k8s/namespace.yaml
+	$(KC) -n $(NS) apply -f k8s/namespace.yaml
+	$(KC) -n $(NS) apply -f k8s/manager.yaml
+	$(KC) -n $(NS) apply -f k8s/podproxy.yaml
+	$(KC) -n $(NS) apply -f k8s/ingress.yaml
 
 teardown:
-	$(KC) delete ns $(NS) --ignore-not-found --force --grace-period=0
+	$(KC) -n $(NS) delete all --all
 
 debug: build
 	$(KC) -n $(NS) delete --ignore-not-found deployment abc

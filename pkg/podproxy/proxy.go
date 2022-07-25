@@ -3,6 +3,8 @@ package podproxy
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -14,7 +16,12 @@ import (
 )
 
 const (
+	NAMESPACE             = "fusion"
 	PROXY_REQUEST_TIMEOUT = 5 * time.Second
+)
+
+var (
+	errMissingNameHeader = errors.New("missing header: X-Fusion-Sandbox-Name")
 )
 
 // http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
@@ -35,16 +42,27 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 	}
 
 	http.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
+		sandboxName, ok := req.Header["X-Fusion-Sandbox-Name"]
+		if !ok {
+			httpErr(log, resp, errMissingNameHeader, "failed to read sandbox name")
+			return
+		}
+
+		hostname := fmt.Sprintf("%s.%s.svc.cluster.local", sandboxName, NAMESPACE)
+
+		_, err := net.LookupIP(hostname)
+		if err != nil {
+			httpErr(log, resp, err, "sandbox dns entry missing")
+			return
+		}
+
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			httpErr(log, resp, err, "failed to read proxy request body")
 			return
 		}
 
-		// FIXME
-		url := "127.0.0.1:3333"
-
-		proxyReq, err := http.NewRequest(req.Method, url, bytes.NewReader(body))
+		proxyReq, err := http.NewRequest(req.Method, hostname, bytes.NewReader(body))
 		if err != nil {
 			httpErr(log, resp, err, "failed to create proxy request")
 			return
@@ -70,7 +88,7 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 		io.Copy(resp, proxyResp.Body)
 	})
 
-	return http.ListenAndServe("127.0.0.1:"+strconv.Itoa(port), nil)
+	return http.ListenAndServe(":"+strconv.Itoa(port), nil)
 }
 
 func copyHeader(dest, src http.Header, skipHopHeaders bool) {
