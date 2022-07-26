@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,54 +18,94 @@ import (
 
 const (
 	FIELD_MANAGER = "fusion/manager"
-	NAMESPACE     = "fusion"
-	K8S_CONFIG    = "/etc/rancher/k3s/k3s.yaml"
-	IMAGE         = "localhost/fusion:latest"
 )
 
-func CreateDeployment(ctx context.Context, epoch int64, key string) (NetLocation, error) {
-	client, err := k8sClient()
+type KubeClient struct {
+	epoch     int64
+	namespace string
+	image     string
+	set       *kubernetes.Clientset
+}
+
+func NewKubeClient(epoch int64, namespace, image string) (*KubeClient, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", "")
 	if err != nil {
-		return NetLocation{}, err
+		return nil, fmt.Errorf("cannot load cluster kubeconfig: %w", err)
 	}
 
-	deployment, err := client.AppsV1().
-		Deployments(NAMESPACE).
-		Apply(ctx, genDeployment(key, IMAGE, epoch), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
+	set, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return NetLocation{}, fmt.Errorf("cannot apply deployment %v: %w", key, err)
+		return nil, fmt.Errorf("cannot build clientset: %w", err)
 	}
 
-	_, err = client.CoreV1().
-		Services(NAMESPACE).
-		Apply(ctx, genService(key, epoch), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
-	if err != nil {
-		return NetLocation{}, fmt.Errorf("cannot apply service %v: %w", key, err)
-	}
-
-	return NetLocation{
-		Host: deployment.GetName(),
-		Port: 3333,
+	return &KubeClient{
+		epoch:     epoch,
+		namespace: namespace,
+		image:     image,
+		set:       set,
 	}, nil
 }
 
-func DeleteDeployment(ctx context.Context, key string) error {
-	client, err := k8sClient()
+func (c *KubeClient) CreateDeployment(ctx context.Context, key string) error {
+	_, err := c.set.AppsV1().
+		Deployments(c.namespace).
+		Apply(ctx, c.genDeployment(key), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot apply deployment %v: %w", key, err)
 	}
 
-	return client.AppsV1().Deployments(NAMESPACE).Delete(ctx, key, meta.DeleteOptions{})
+	_, err = c.set.CoreV1().
+		Services(c.namespace).
+		Apply(ctx, c.genService(key), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
+	if err != nil {
+		return fmt.Errorf("cannot apply service %v: %w", key, err)
+	}
+
+	return nil
 }
 
-func genDeployment(name, image string, epoch int64) *appsconf.DeploymentApplyConfiguration {
+func (c *KubeClient) DeleteDeployment(ctx context.Context, key string) error {
+	return c.set.AppsV1().Deployments(c.namespace).Delete(ctx, key, meta.DeleteOptions{})
+}
+
+func (c *KubeClient) WaitForEndpoint(ctx context.Context, key string) error {
+	selector := fmt.Sprintf("metadata.name=%s", key)
+	idx := 0
+
+	for {
+		if idx > 20 {
+			return fmt.Errorf("too many attempts (%v) to find service", idx)
+		}
+
+		list, err := c.set.CoreV1().
+			Endpoints(c.namespace).
+			List(ctx, meta.ListOptions{FieldSelector: selector})
+		if err != nil {
+			return fmt.Errorf("cannot list services %v: %w", key, err)
+		}
+
+		if len(list.Items) > 0 {
+			endpoint := list.Items[0]
+			if len(endpoint.Subsets) > 0 {
+				// FIXME: Wait for DNS confirmation
+				time.Sleep(4 * time.Second)
+				return nil
+			}
+		}
+
+		time.Sleep(500 * time.Millisecond)
+		idx += 1
+	}
+}
+
+func (c *KubeClient) genDeployment(key string) *appsconf.DeploymentApplyConfiguration {
 	labels := map[string]string{
 		"fusion/type":  "node",
-		"fusion/name":  name,
-		"fusion/epoch": strconv.FormatInt(epoch, 10),
+		"fusion/name":  key,
+		"fusion/epoch": strconv.FormatInt(c.epoch, 10),
 	}
 
-	return appsconf.Deployment(name, NAMESPACE).
+	return appsconf.Deployment(key, c.namespace).
 		WithLabels(labels).
 		WithSpec(
 			appsconf.DeploymentSpec().
@@ -78,53 +119,38 @@ func genDeployment(name, image string, epoch int64) *appsconf.DeploymentApplyCon
 						WithLabels(labels).
 						WithSpec(
 							coreconf.PodSpec().
-								WithContainers(genContainer(image)),
+								WithContainers(c.genContainer()),
 						),
 				),
 		)
 }
 
-func genService(name string, epoch int64) *coreconf.ServiceApplyConfiguration {
+func (c *KubeClient) genService(key string) *coreconf.ServiceApplyConfiguration {
 	labels := map[string]string{
-		"fusion/type":  "node",
-		"fusion/name":  name,
-		"fusion/epoch": strconv.FormatInt(epoch, 10),
+		"fusion/name": key,
 	}
 
-	return coreconf.Service(name, NAMESPACE).
+	return coreconf.Service(key, c.namespace).
 		WithSpec(
 			coreconf.ServiceSpec().
 				WithSelector(labels).
 				WithPorts(
 					coreconf.ServicePort().
+						WithProtocol(core.ProtocolTCP).
 						WithPort(80).
 						WithTargetPort(intstr.FromInt(5152)),
 				),
 		)
 }
 
-func genContainer(image string) *coreconf.ContainerApplyConfiguration {
+func (c *KubeClient) genContainer() *coreconf.ContainerApplyConfiguration {
 	port := coreconf.ContainerPort().
 		WithContainerPort(5152)
 
 	return coreconf.Container().
 		WithName("sandbox").
-		WithImage(image).
+		WithImage(c.image).
 		WithImagePullPolicy(core.PullNever).
 		WithPorts(port).
 		WithCommand("./fusion", "sandbox", "-p", "5152")
-}
-
-func k8sClient() (*kubernetes.Clientset, error) {
-	config, err := clientcmd.BuildConfigFromFlags("", K8S_CONFIG)
-	if err != nil {
-		return nil, fmt.Errorf("cannot load kubeconfig %v: %w", K8S_CONFIG, err)
-	}
-
-	client, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("cannot build clientset: %w", err)
-	}
-
-	return client, nil
 }

@@ -1,4 +1,4 @@
 write-kubeconfig-mode: "0644"
 tls-san:
   - "fusion.local"
-node-external-ip: 10.1.1.2
+resolvConf: "/run/systemd/resolve/resolv.conf"

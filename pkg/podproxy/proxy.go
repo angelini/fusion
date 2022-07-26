@@ -12,15 +12,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/angelini/fusion/internal/pb"
 	"go.uber.org/zap"
 )
 
 const (
 	NAMESPACE             = "fusion"
-	PROXY_REQUEST_TIMEOUT = 5 * time.Second
+	PROXY_REQUEST_TIMEOUT = 10 * time.Second
 )
 
 var (
+	managerHostname      = fmt.Sprintf("fusion-manager-service.%s.svc.cluster.local:80", NAMESPACE)
 	errMissingNameHeader = errors.New("missing header: X-Fusion-Sandbox-Name")
 )
 
@@ -37,23 +39,36 @@ var hopHeaders = map[string]bool{
 }
 
 func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
-	client := &http.Client{
+	grpcClient, err := NewClient(ctx, log, managerHostname)
+	if err != nil {
+		return fmt.Errorf("cannot connect grpc client to %v: %w", managerHostname, err)
+	}
+
+	httpClient := &http.Client{
 		Timeout: PROXY_REQUEST_TIMEOUT,
 	}
 
 	http.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
-		sandboxName, ok := req.Header["X-Fusion-Sandbox-Name"]
-		if !ok {
+		log.Info("incoming request", zap.String("url", req.URL.String()), zap.Strings("sandbox-name", req.Header["X-Fusion-Sandbox-Name"]))
+
+		sandboxNames, ok := req.Header["X-Fusion-Sandbox-Name"]
+		if !ok || len(sandboxNames) == 0 {
 			httpErr(log, resp, errMissingNameHeader, "failed to read sandbox name")
 			return
 		}
 
+		sandboxName := sandboxNames[0]
 		hostname := fmt.Sprintf("%s.%s.svc.cluster.local", sandboxName, NAMESPACE)
 
 		_, err := net.LookupIP(hostname)
 		if err != nil {
-			httpErr(log, resp, err, "sandbox dns entry missing")
-			return
+			_, err = grpcClient.BootSandbox(ctx, &pb.BootSandboxRequest{
+				Key: sandboxName,
+			})
+			if err != nil {
+				httpErr(log, resp, err, "failed to boot sandbox")
+				return
+			}
 		}
 
 		body, err := io.ReadAll(req.Body)
@@ -62,7 +77,8 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 			return
 		}
 
-		proxyReq, err := http.NewRequest(req.Method, hostname, bytes.NewReader(body))
+		url := fmt.Sprintf("http://%s%s", hostname, req.URL.String())
+		proxyReq, err := http.NewRequest(req.Method, url, bytes.NewReader(body))
 		if err != nil {
 			httpErr(log, resp, err, "failed to create proxy request")
 			return
@@ -76,7 +92,7 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 			appendHostToXForwardHeader(req.Header, remoteHost)
 		}
 
-		proxyResp, err := client.Do(proxyReq)
+		proxyResp, err := httpClient.Do(proxyReq)
 		if err != nil {
 			httpErr(log, resp, err, "failed to proxy request")
 			return

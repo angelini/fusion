@@ -27,6 +27,8 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 	}
 
 	http.HandleFunc("/__meta/version", func(resp http.ResponseWriter, req *http.Request) {
+		log.Info("incoming meta version", zap.String("url", req.URL.String()))
+
 		var versionReq VersionRequest
 
 		err := json.NewDecoder(req.Body).Decode(&versionReq)
@@ -48,6 +50,8 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 		reqCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
+		log.Info("incoming request", zap.String("url", req.URL.String()))
+
 		portChan := manager.LivePortChannel(reqCtx)
 
 		select {
@@ -61,7 +65,7 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 				return
 			}
 
-			url := fmt.Sprintf("http://%s:%d/", manager.Host, port)
+			url := fmt.Sprintf("http://%s:%d%s", manager.Host, port, req.URL.String())
 
 			proxyReq, err := http.NewRequest(req.Method, url, bytes.NewReader(body))
 			if err != nil {

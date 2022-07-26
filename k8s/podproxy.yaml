@@ -33,6 +33,7 @@ spec:
   selector:
     fusion/component: podproxy
   ports:
-    - protocol: TCP
+    - name: podproxy-http
+      protocol: TCP
       port: 80
       targetPort: 5153

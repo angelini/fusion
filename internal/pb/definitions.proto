@@ -5,14 +5,15 @@ package pb;
 option go_package = "github.com/angelini/fusion/internal/pb";
 
 service Manager {
-    rpc GetRoute(GetRouteRequest) returns (GetRouteResponse);
+    rpc BootSandbox(BootSandboxRequest) returns (BootSandboxResponse);
 }
 
-message GetRouteRequest {
+message BootSandboxRequest {
     string key = 1;
 }
 
-message GetRouteResponse {
-    string host = 1;
-    int32 port = 2;
+message BootSandboxResponse {
+    int64 epoch = 1;
+    string host = 2;
+    int32 port = 3;
 }

@@ -14,4 +14,4 @@ spec:
           service:
             name: fusion-podproxy-service
             port:
-              number: 80
+              name: podproxy-http
