@@ -1,17 +1,37 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
+  name: fusion-manager-ingress
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+    - host: "fusion-manager.localdomain"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fusion-manager-service
+                port:
+                  name: manager-grpc
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
   name: fusion-podproxy-ingress
   annotations:
     kubernetes.io/ingress.class: traefik
 spec:
   rules:
-  - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: fusion-podproxy-service
-            port:
-              name: podproxy-http
+    - host: "fusion-podproxy.localdomain"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fusion-podproxy-service
+                port:
+                  name: podproxy-http

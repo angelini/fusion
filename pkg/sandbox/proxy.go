@@ -26,7 +26,7 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 		Timeout: PROXY_REQUEST_READ_TIMEOUT,
 	}
 
-	http.HandleFunc("/__meta/version", func(resp http.ResponseWriter, req *http.Request) {
+	http.HandleFunc("/__meta__/version", func(resp http.ResponseWriter, req *http.Request) {
 		log.Info("incoming meta version", zap.String("url", req.URL.String()))
 
 		var versionReq VersionRequest

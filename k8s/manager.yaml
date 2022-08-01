@@ -29,10 +29,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: fusion-manager-service
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
     fusion/component: manager
   ports:
-    - protocol: TCP
+    - name: manager-grpc
+      protocol: TCP
       port: 80
       targetPort: 5152

@@ -46,30 +46,30 @@ func NewKubeClient(epoch int64, namespace, image string) (*KubeClient, error) {
 	}, nil
 }
 
-func (c *KubeClient) CreateDeployment(ctx context.Context, key string) error {
+func (c *KubeClient) CreateDeployment(ctx context.Context, name string) error {
 	_, err := c.set.AppsV1().
 		Deployments(c.namespace).
-		Apply(ctx, c.genDeployment(key), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
+		Apply(ctx, c.genDeployment(name), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
 	if err != nil {
-		return fmt.Errorf("cannot apply deployment %v: %w", key, err)
+		return fmt.Errorf("cannot apply deployment %v: %w", name, err)
 	}
 
 	_, err = c.set.CoreV1().
 		Services(c.namespace).
-		Apply(ctx, c.genService(key), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
+		Apply(ctx, c.genService(name), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
 	if err != nil {
-		return fmt.Errorf("cannot apply service %v: %w", key, err)
+		return fmt.Errorf("cannot apply service %v: %w", name, err)
 	}
 
 	return nil
 }
 
-func (c *KubeClient) DeleteDeployment(ctx context.Context, key string) error {
-	return c.set.AppsV1().Deployments(c.namespace).Delete(ctx, key, meta.DeleteOptions{})
+func (c *KubeClient) DeleteDeployment(ctx context.Context, name string) error {
+	return c.set.AppsV1().Deployments(c.namespace).Delete(ctx, name, meta.DeleteOptions{})
 }
 
-func (c *KubeClient) WaitForEndpoint(ctx context.Context, key string) error {
-	selector := fmt.Sprintf("metadata.name=%s", key)
+func (c *KubeClient) WaitForEndpoint(ctx context.Context, name string) error {
+	selector := fmt.Sprintf("metadata.name=%s", name)
 	idx := 0
 
 	for {
@@ -81,7 +81,7 @@ func (c *KubeClient) WaitForEndpoint(ctx context.Context, key string) error {
 			Endpoints(c.namespace).
 			List(ctx, meta.ListOptions{FieldSelector: selector})
 		if err != nil {
-			return fmt.Errorf("cannot list services %v: %w", key, err)
+			return fmt.Errorf("cannot list services %v: %w", name, err)
 		}
 
 		if len(list.Items) > 0 {
@@ -98,14 +98,35 @@ func (c *KubeClient) WaitForEndpoint(ctx context.Context, key string) error {
 	}
 }
 
-func (c *KubeClient) genDeployment(key string) *appsconf.DeploymentApplyConfiguration {
+func (c *KubeClient) GetAllEndpoints(ctx context.Context, name string) ([]string, error) {
+	selector := fmt.Sprintf("metadata.name=%s", name)
+	list, err := c.set.CoreV1().
+		Endpoints(c.namespace).
+		List(ctx, meta.ListOptions{FieldSelector: selector})
+	if err != nil {
+		return nil, fmt.Errorf("cannot list endpoints of %v: %w", name, err)
+	}
+
+	ips := make([]string, len(list.Items))
+	for _, endpoint := range list.Items {
+		if len(endpoint.Subsets) > 0 {
+			if len(endpoint.Subsets[0].Addresses) > 0 {
+				ips = append(ips, endpoint.Subsets[0].Addresses[0].IP)
+			}
+		}
+	}
+
+	return ips, nil
+}
+
+func (c *KubeClient) genDeployment(name string) *appsconf.DeploymentApplyConfiguration {
 	labels := map[string]string{
 		"fusion/type":  "node",
-		"fusion/name":  key,
+		"fusion/name":  name,
 		"fusion/epoch": strconv.FormatInt(c.epoch, 10),
 	}
 
-	return appsconf.Deployment(key, c.namespace).
+	return appsconf.Deployment(name, c.namespace).
 		WithLabels(labels).
 		WithSpec(
 			appsconf.DeploymentSpec().
@@ -125,12 +146,12 @@ func (c *KubeClient) genDeployment(key string) *appsconf.DeploymentApplyConfigur
 		)
 }
 
-func (c *KubeClient) genService(key string) *coreconf.ServiceApplyConfiguration {
+func (c *KubeClient) genService(name string) *coreconf.ServiceApplyConfiguration {
 	labels := map[string]string{
-		"fusion/name": key,
+		"fusion/name": name,
 	}
 
-	return coreconf.Service(key, c.namespace).
+	return coreconf.Service(name, c.namespace).
 		WithSpec(
 			coreconf.ServiceSpec().
 				WithSelector(labels).

@@ -14,6 +14,8 @@ import (
 
 	"github.com/angelini/fusion/internal/pb"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -23,7 +25,7 @@ const (
 
 var (
 	managerHostname      = fmt.Sprintf("fusion-manager-service.%s.svc.cluster.local:80", NAMESPACE)
-	errMissingNameHeader = errors.New("missing header: X-Fusion-Sandbox-Name")
+	errMissingNameHeader = errors.New("missing header: X-Fusion-Project")
 )
 
 // http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
@@ -39,7 +41,7 @@ var hopHeaders = map[string]bool{
 }
 
 func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
-	grpcClient, err := NewClient(ctx, log, managerHostname)
+	grpcClient, err := newGrpcClient(ctx, log, managerHostname)
 	if err != nil {
 		return fmt.Errorf("cannot connect grpc client to %v: %w", managerHostname, err)
 	}
@@ -49,21 +51,26 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 	}
 
 	http.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
-		log.Info("incoming request", zap.String("url", req.URL.String()), zap.Strings("sandbox-name", req.Header["X-Fusion-Sandbox-Name"]))
+		log.Info("incoming request", zap.String("url", req.URL.String()), zap.Strings("project", req.Header["X-Fusion-Project"]))
 
-		sandboxNames, ok := req.Header["X-Fusion-Sandbox-Name"]
-		if !ok || len(sandboxNames) == 0 {
+		projects, ok := req.Header["X-Fusion-Project"]
+		if !ok || len(projects) == 0 {
 			httpErr(log, resp, errMissingNameHeader, "failed to read sandbox name")
 			return
 		}
 
-		sandboxName := sandboxNames[0]
-		hostname := fmt.Sprintf("%s.%s.svc.cluster.local", sandboxName, NAMESPACE)
+		project, err := strconv.ParseInt(projects[0], 10, 64)
+		if err != nil {
+			httpErr(log, resp, err, "failed to parse sandbox name")
+			return
+		}
 
-		_, err := net.LookupIP(hostname)
+		hostname := fmt.Sprintf("s-%d.%s.svc.cluster.local", project, NAMESPACE)
+
+		_, err = net.LookupIP(hostname)
 		if err != nil {
 			_, err = grpcClient.BootSandbox(ctx, &pb.BootSandboxRequest{
-				Key: sandboxName,
+				Project: project,
 			})
 			if err != nil {
 				httpErr(log, resp, err, "failed to boot sandbox")
@@ -105,6 +112,18 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 	})
 
 	return http.ListenAndServe(":"+strconv.Itoa(port), nil)
+}
+
+func newGrpcClient(ctx context.Context, log *zap.Logger, server string) (pb.ManagerClient, error) {
+	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(connectCtx, server, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect to grpc server %v: %w", server, err)
+	}
+
+	return pb.NewManagerClient(conn), nil
 }
 
 func copyHeader(dest, src http.Header, skipHopHeaders bool) {

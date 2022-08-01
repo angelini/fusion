@@ -18,7 +18,8 @@ func NewCmdRoot() *cobra.Command {
 	var level *zapcore.Level
 
 	cmd := &cobra.Command{
-		Use: "fusion",
+		Use:          "fusion",
+		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			config := zap.NewDevelopmentConfig()
 			config.Level = zap.NewAtomicLevelAt(*level)

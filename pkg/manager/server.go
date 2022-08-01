@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func NewServer(log *zap.Logger) *grpc.Server {
+func NewServer(log *zap.Logger) (*grpc.Server, error) {
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
@@ -27,12 +27,12 @@ func NewServer(log *zap.Logger) *grpc.Server {
 		),
 	)
 
-	api := &ManagerApi{
-		log:   log,
-		epoch: time.Now().Unix(),
+	api, err := NewManagerApi(log, time.Now().Unix(), "fusion", "localhost/fusion:latest")
+	if err != nil {
+		return nil, err
 	}
 
 	pb.RegisterManagerServer(grpcServer, api)
 
-	return grpcServer
+	return grpcServer, nil
 }
