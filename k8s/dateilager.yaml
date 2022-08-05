@@ -3,18 +3,18 @@ kind: Deployment
 metadata:
   name: dateilager
   labels:
-    name: dateilager
-    fusion/component: dl-server
+    app.kubernetes.io/name: dateilager
+    app.kubernetes.io/part-of: fusion
 spec:
   replicas: 1
   selector:
     matchLabels:
-      fusion/component: dl-server
+      app.kubernetes.io/name: dateilager
   template:
     metadata:
       labels:
-        name: dateilager
-        fusion/component: dl-server
+        app.kubernetes.io/name: dateilager
+        app.kubernetes.io/part-of: fusion
     spec:
       containers:
         - name: dateilager
@@ -44,7 +44,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
-    fusion/component: dl-server
+    app.kubernetes.io/name: dateilager
   ports:
     - name: dl-grpc
       protocol: TCP

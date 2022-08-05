@@ -3,21 +3,23 @@ kind: Deployment
 metadata:
   name: fusion-podproxy
   labels:
-    name: fusion-podproxy
-    fusion/component: podproxy
+    app.kubernetes.io/name: fusion-podproxy
+    app.kubernetes.io/component: podproxy
+    app.kubernetes.io/part-of: fusion
 spec:
   replicas: 1
   selector:
     matchLabels:
-      fusion/component: podproxy
+      app.kubernetes.io/name: fusion-podproxy
   template:
     metadata:
       labels:
-        name: fusion-podproxy
-        fusion/component: podproxy
+        app.kubernetes.io/name: fusion-podproxy
+        app.kubernetes.io/component: podproxy
+        app.kubernetes.io/part-of: fusion
     spec:
       containers:
-        - name: fusion-podproxy
+        - name: podproxy
           image: localhost/fusion:latest
           imagePullPolicy: Never
           command: ["./fusion"]
@@ -31,7 +33,7 @@ metadata:
   name: fusion-podproxy-service
 spec:
   selector:
-    fusion/component: podproxy
+    app.kubernetes.io/name: fusion-podproxy
   ports:
     - name: podproxy-http
       protocol: TCP

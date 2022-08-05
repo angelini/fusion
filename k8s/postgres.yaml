@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dl-postgres
+  name: postgres
   labels:
-    name: dl-postgres
-    fusion/component: postgres
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: fusion
 spec:
   replicas: 1
   selector:
     matchLabels:
-      fusion/component: postgres
+      app.kubernetes.io/name: postgres
   template:
     metadata:
       labels:
-        name: dl-postgres
-        fusion/component: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/part-of: fusion
     spec:
       containers:
         - name: postgres
@@ -29,10 +29,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: dl-postgres-service
+  name: postgres-service
 spec:
   selector:
-    fusion/component: postgres
+    app.kubernetes.io/name: postgres
   ports:
     - name: postgres-rpc
       protocol: TCP

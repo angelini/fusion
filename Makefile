@@ -128,7 +128,7 @@ status:
 	$(call spacer)
 	@$(KC) describe ingresses
 
-debug: build
+debug:
 	$(KC) delete --ignore-not-found deployment abc
 	go run main.go debug
 

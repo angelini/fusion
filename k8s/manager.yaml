@@ -3,21 +3,23 @@ kind: Deployment
 metadata:
   name: fusion-manager
   labels:
-    name: fusion-manager
-    fusion/component: manager
+    app.kubernetes.io/name: fusion-manager
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/part-of: fusion
 spec:
   replicas: 1
   selector:
     matchLabels:
-      fusion/component: manager
+      app.kubernetes.io/name: fusion-manager
   template:
     metadata:
       labels:
-        name: fusion-manager
-        fusion/component: manager
+        app.kubernetes.io/name: fusion-manager
+        app.kubernetes.io/component: manager
+        app.kubernetes.io/part-of: fusion
     spec:
       containers:
-        - name: fusion-manager
+        - name: manager
           image: localhost/fusion:latest
           imagePullPolicy: Never
           command: ["./fusion"]
@@ -33,7 +35,7 @@ metadata:
     traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
-    fusion/component: manager
+    app.kubernetes.io/name: fusion-manager
   ports:
     - name: manager-grpc
       protocol: TCP
