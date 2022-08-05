@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dl-postgres
+  labels:
+    name: dl-postgres
+    fusion/component: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      fusion/component: postgres
+  template:
+    metadata:
+      labels:
+        name: dl-postgres
+        fusion/component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:14.4
+          imagePullPolicy: IfNotPresent
+          ports:
+            -  containerPort: 5432
+          env:
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: trust
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dl-postgres-service
+spec:
+  selector:
+    fusion/component: postgres
+  ports:
+    - name: postgres-rpc
+      protocol: TCP
+      port: 5432
+      targetPort: 5432

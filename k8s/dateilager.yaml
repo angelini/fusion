@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dateilager
+  labels:
+    name: dateilager
+    fusion/component: dl-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      fusion/component: dl-server
+  template:
+    metadata:
+      labels:
+        name: dateilager
+        fusion/component: dl-server
+    spec:
+      containers:
+        - name: dateilager
+          image: localhost/dateilager:latest
+          imagePullPolicy: Never
+          ports:
+            -  containerPort: 5051
+          env:
+            - name: DL_ENV
+              value: dev
+            - name: RUN_MIGRATIONS
+              value: "1"
+          volumeMounts:
+            - name: tls-secret
+              mountPath: "/home/main/secrets/tls"
+              readOnly: true
+      volumes:
+        - name: tls-secret
+          secret:
+            secretName: tls-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dateilager-service
+  annotations:
+    traefik.ingress.kubernetes.io/service.serversscheme: h2c
+spec:
+  selector:
+    fusion/component: dl-server
+  ports:
+    - name: dl-grpc
+      protocol: TCP
+      port: 80
+      targetPort: 5051
