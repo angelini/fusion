@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	dlc "github.com/gadget-inc/dateilager/pkg/client"
 	"go.uber.org/zap"
 )
 
@@ -18,14 +19,29 @@ const (
 	MAX_PORT_OFFSET = 500
 )
 
+type Command struct {
+	Exec    string
+	Args    []string
+	WorkDir string
+}
+
+func NewCommand(exec string, args []string, workDir string) Command {
+	return Command{
+		Exec:    exec,
+		Args:    args,
+		WorkDir: workDir,
+	}
+}
+
 type Manager struct {
 	Host string
 
 	log        *zap.Logger
-	executable string
-	script     string
+	command    Command
 	portStart  int
 	portOffset int
+	project    int64
+	dlClient   *dlc.Client
 	cancelFunc context.CancelFunc
 
 	procMutex sync.RWMutex
@@ -35,15 +51,23 @@ type Manager struct {
 	gracefuls []*Process
 }
 
-func NewManager(parentCtx context.Context, log *zap.Logger, host, executable, script string, portStart int) *Manager {
+func NewManager(parentCtx context.Context, log *zap.Logger, host, dlServer string, project int64, command Command, portStart int) (*Manager, error) {
 	ctx, cancel := context.WithCancel(parentCtx)
 
+	dlClient, err := dlc.NewClient(ctx, dlServer)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
 	manager := &Manager{
-		Host:       host,
-		log:        log,
-		executable: executable,
-		script:     script,
-		portStart:  portStart,
+		Host:      host,
+		log:       log,
+		command:   command,
+		portStart: portStart,
+		project:   project,
+		dlClient:  dlClient,
+
 		cancelFunc: cancel,
 		counters:   make(map[int]int),
 	}
@@ -95,7 +119,7 @@ func NewManager(parentCtx context.Context, log *zap.Logger, host, executable, sc
 		}
 	}()
 
-	return manager
+	return manager, nil
 }
 
 func (m *Manager) Close() {
@@ -186,7 +210,7 @@ func (m *Manager) setCurrent(port int) {
 	m.next = nil
 }
 
-func (m *Manager) StartProcess(ctx context.Context, version int) error {
+func (m *Manager) StartProcess(ctx context.Context, version int64) error {
 	err := m.killNextIfRunning()
 	if err != nil {
 		return fmt.Errorf("failed to kill concurrent next process: %w", err)
@@ -198,7 +222,12 @@ func (m *Manager) StartProcess(ctx context.Context, version int) error {
 	}
 	port := m.portStart + m.portOffset
 
-	proc := NewProcess(m.log, m.executable, m.script, port, version)
+	_, _, err = m.dlClient.Rebuild(ctx, m.project, "", &version, m.command.WorkDir)
+	if err != nil {
+		return fmt.Errorf("failed to rebuild workdir to version %v: %w", version, err)
+	}
+
+	proc := NewProcess(m.log, m.command.Exec, m.command.Args[0], port, version)
 
 	err = proc.Run(ctx)
 	if err != nil {

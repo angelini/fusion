@@ -18,13 +18,13 @@ type Process struct {
 	executable string
 	script     string
 	port       int
-	version    int
+	version    int64
 
 	pid        *int
 	cancelFunc context.CancelFunc
 }
 
-func NewProcess(log *zap.Logger, executable, script string, port, version int) *Process {
+func NewProcess(log *zap.Logger, executable, script string, port int, version int64) *Process {
 	return &Process{
 		log:        log,
 		executable: executable,

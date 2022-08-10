@@ -3,10 +3,12 @@ kind: Ingress
 metadata:
   name: fusion-manager-ingress
   annotations:
-    kubernetes.io/ingress.class: traefik
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPCS"
 spec:
+  ingressClassName: nginx
   rules:
-    - host: "fusion-manager.localdomain"
+    - host: fusion-manager.localdomain
       http:
         paths:
           - path: /
@@ -16,16 +18,19 @@ spec:
                 name: fusion-manager-service
                 port:
                   name: manager-grpc
+  tls:
+    - secretName: tls-secret
+      hosts:
+        - fusion-manager.localdomain
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: fusion-podproxy-ingress
-  annotations:
-    kubernetes.io/ingress.class: traefik
 spec:
+  ingressClassName: nginx
   rules:
-    - host: "fusion-podproxy.localdomain"
+    - host: fusion-podproxy.localdomain
       http:
         paths:
           - path: /
@@ -35,3 +40,28 @@ spec:
                 name: fusion-podproxy-service
                 port:
                   name: podproxy-http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dateilager-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPCS"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: dateilager.localdomain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dateilager-service
+                port:
+                  name: dateilager-grpc
+  tls:
+    - secretName: tls-secret
+      hosts:
+        - dateilager.localdomain

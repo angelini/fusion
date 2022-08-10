@@ -3,29 +3,25 @@ package podproxy
 import (
 	"bytes"
 	"context"
-	"errors"
+	"crypto/ed25519"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/angelini/fusion/internal/pb"
+	"github.com/o1egl/paseto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
-	NAMESPACE             = "fusion"
 	PROXY_REQUEST_TIMEOUT = 10 * time.Second
-)
-
-var (
-	managerHostname      = fmt.Sprintf("fusion-manager-service.%s.svc.cluster.local:80", NAMESPACE)
-	errMissingNameHeader = errors.New("missing header: X-Fusion-Project")
 )
 
 // http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html
@@ -40,54 +36,87 @@ var hopHeaders = map[string]bool{
 	"Upgrade":             true,
 }
 
-func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
-	grpcClient, err := newGrpcClient(ctx, log, managerHostname)
+type Proxy struct {
+	log        *zap.Logger
+	namespace  string
+	managerUri string
+	port       int
+	publicKey  ed25519.PublicKey
+
+	httpClient    *http.Client
+	managerClient pb.ManagerClient
+}
+
+func NewProxy(log *zap.Logger, namespace, managerUri string, port int, publicKey ed25519.PublicKey) (*Proxy, error) {
+	connectCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(connectCtx, managerUri, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return fmt.Errorf("cannot connect grpc client to %v: %w", managerHostname, err)
+		return nil, fmt.Errorf("cannot connect to grpc server %v: %w", managerUri, err)
 	}
 
-	httpClient := &http.Client{
+	managerClient := pb.NewManagerClient(conn)
+
+	httpClient := http.Client{
 		Timeout: PROXY_REQUEST_TIMEOUT,
 	}
 
+	return &Proxy{
+		log:        log,
+		namespace:  namespace,
+		managerUri: managerUri,
+		port:       port,
+		publicKey:  publicKey,
+
+		httpClient:    &httpClient,
+		managerClient: managerClient,
+	}, nil
+}
+
+func (p *Proxy) Start(ctx context.Context) error {
 	http.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {
-		log.Info("incoming request", zap.String("url", req.URL.String()), zap.Strings("project", req.Header["X-Fusion-Project"]))
+		p.log.Info("incoming request", zap.String("url", req.URL.String()), zap.Strings("project", req.Header["X-Fusion-Project"]))
 
-		projects, ok := req.Header["X-Fusion-Project"]
-		if !ok || len(projects) == 0 {
-			httpErr(log, resp, errMissingNameHeader, "failed to read sandbox name")
-			return
-		}
-
-		project, err := strconv.ParseInt(projects[0], 10, 64)
+		project, err := readProject(req.Header)
 		if err != nil {
-			httpErr(log, resp, err, "failed to parse sandbox name")
+			p.httpErr(resp, err, "failed to parse project header")
 			return
 		}
 
-		hostname := fmt.Sprintf("s-%d.%s.svc.cluster.local", project, NAMESPACE)
+		valid, err := verifyAuthorization(req.Header, project, p.publicKey)
+		if err != nil {
+			p.httpErr(resp, err, "failed to validate auth header")
+			return
+		}
+		if !valid {
+			resp.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		hostname := fmt.Sprintf("s-%d.%s.svc.cluster.local", project, p.namespace)
 
 		_, err = net.LookupIP(hostname)
 		if err != nil {
-			_, err = grpcClient.BootSandbox(ctx, &pb.BootSandboxRequest{
+			_, err = p.managerClient.BootSandbox(ctx, &pb.BootSandboxRequest{
 				Project: project,
 			})
 			if err != nil {
-				httpErr(log, resp, err, "failed to boot sandbox")
+				p.httpErr(resp, err, "failed to boot sandbox")
 				return
 			}
 		}
 
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
-			httpErr(log, resp, err, "failed to read proxy request body")
+			p.httpErr(resp, err, "failed to read proxy request body")
 			return
 		}
 
 		url := fmt.Sprintf("http://%s%s", hostname, req.URL.String())
 		proxyReq, err := http.NewRequest(req.Method, url, bytes.NewReader(body))
 		if err != nil {
-			httpErr(log, resp, err, "failed to create proxy request")
+			p.httpErr(resp, err, "failed to create proxy request")
 			return
 		}
 
@@ -99,9 +128,9 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 			appendHostToXForwardHeader(req.Header, remoteHost)
 		}
 
-		proxyResp, err := httpClient.Do(proxyReq)
+		proxyResp, err := p.httpClient.Do(proxyReq)
 		if err != nil {
-			httpErr(log, resp, err, "failed to proxy request")
+			p.httpErr(resp, err, "failed to proxy request")
 			return
 		}
 		defer proxyResp.Body.Close()
@@ -111,19 +140,12 @@ func StartProxy(ctx context.Context, log *zap.Logger, port int) error {
 		io.Copy(resp, proxyResp.Body)
 	})
 
-	return http.ListenAndServe(":"+strconv.Itoa(port), nil)
+	return http.ListenAndServe(":"+strconv.Itoa(p.port), nil)
 }
 
-func newGrpcClient(ctx context.Context, log *zap.Logger, server string) (pb.ManagerClient, error) {
-	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(connectCtx, server, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("cannot connect to grpc server %v: %w", server, err)
-	}
-
-	return pb.NewManagerClient(conn), nil
+func (p *Proxy) httpErr(resp http.ResponseWriter, err error, message string) {
+	p.log.Error(message, zap.Error(err))
+	http.Error(resp, err.Error(), http.StatusInternalServerError)
 }
 
 func copyHeader(dest, src http.Header, skipHopHeaders bool) {
@@ -147,7 +169,42 @@ func appendHostToXForwardHeader(header http.Header, host string) {
 	header.Set("X-Forwarded-For", host)
 }
 
-func httpErr(log *zap.Logger, resp http.ResponseWriter, err error, message string) {
-	log.Error(message, zap.Error(err))
-	http.Error(resp, err.Error(), http.StatusInternalServerError)
+func readProject(header http.Header) (int64, error) {
+	projects, ok := header["X-Fusion-Project"]
+	if !ok || len(projects) == 0 {
+		return -1, fmt.Errorf("failed to read project header")
+	}
+
+	project, err := strconv.ParseInt(projects[0], 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse project header %v: %w", projects[0], err)
+	}
+
+	return project, nil
+}
+
+func verifyAuthorization(header http.Header, project int64, publicKey ed25519.PublicKey) (bool, error) {
+	auths, ok := header["Authorization"]
+	if !ok || len(auths) == 0 {
+		return false, fmt.Errorf("failed to read authorization header")
+	}
+
+	reg := regexp.MustCompile("[Bb]earer (.+)")
+	matches := reg.FindStringSubmatch(auths[0])
+	if len(matches) != 2 {
+		return false, fmt.Errorf("invalid authorization header %v", auths[0])
+	}
+
+	var payload paseto.JSONToken
+	var footer string
+
+	token := matches[1]
+	v2 := paseto.NewV2()
+
+	err := v2.Verify(token, publicKey, &payload, &footer)
+	if len(matches) != 2 {
+		return false, fmt.Errorf("cannot verify authorization header: %w", err)
+	}
+
+	return payload.Subject == strconv.FormatInt(project, 10), nil
 }

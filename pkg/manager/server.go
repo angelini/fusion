@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"crypto/tls"
 	"time"
 
 	"github.com/angelini/fusion/internal/pb"
@@ -9,9 +10,12 @@ import (
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
-func NewServer(log *zap.Logger) (*grpc.Server, error) {
+func NewServer(log *zap.Logger, cert *tls.Certificate, namespace, image, dlServer string) (*grpc.Server, error) {
+	creds := credentials.NewServerTLSFromCert(cert)
+
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(
 			grpc_middleware.ChainUnaryServer(
@@ -25,9 +29,10 @@ func NewServer(log *zap.Logger) (*grpc.Server, error) {
 				grpc_zap.StreamServerInterceptor(log),
 			),
 		),
+		grpc.Creds(creds),
 	)
 
-	api, err := NewManagerApi(log, time.Now().Unix(), "fusion", "localhost/fusion:latest")
+	api, err := NewManagerApi(log, time.Now().Unix(), namespace, image, dlServer)
 	if err != nil {
 		return nil, err
 	}

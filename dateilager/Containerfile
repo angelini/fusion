@@ -8,20 +8,15 @@ RUN apt-get update && \
     && \
     rm -rf /var/lib/apt/lists/*
 
+ARG arch
+
 RUN GO_MIGRATE_VERSION=4.15.2 && \
-    curl -Lfso /tmp/migrate.tar.gz https://github.com/golang-migrate/migrate/releases/download/v${GO_MIGRATE_VERSION}/migrate.linux-amd64.tar.gz && \
+    curl -Lfso /tmp/migrate.tar.gz https://github.com/golang-migrate/migrate/releases/download/v${GO_MIGRATE_VERSION}/migrate.linux-${arch}.tar.gz && \
     tar -xzf /tmp/migrate.tar.gz -C /bin && \
     chmod +x /bin/migrate && \
     rm /tmp/migrate.tar.gz
 
-RUN DL_VERSION=0.2.2 && \
-    curl -Lfso /tmp/dl.tar.gz https://github.com/gadget-inc/dateilager/releases/download/v${DL_VERSION}/dateilager-v${DL_VERSION}-linux-amd64.tar.gz && \
-	tar -xzf /tmp/dl.tar.gz -C /bin && \
-	mv bin/server bin/dateilager-server && \
-	rm bin/client && \
-	rm bin/webui && \
-	rm /tmp/dl.tar.gz && \
-
+RUN DL_VERSION=0.3.6 && \
     curl -Lfso /tmp/dl-migrations.tar.gz https://github.com/gadget-inc/dateilager/releases/download/v${DL_VERSION}/migrations.tar.gz && \
     mkdir -p /etc/dateilager && \
     tar -xzf /tmp/dl-migrations.tar.gz -C /etc/dateilager/ && \
@@ -40,4 +35,4 @@ COPY development/paseto.pub secrets/paseto.pub
 
 ENTRYPOINT ["./entrypoint.sh"]
 
-CMD ["5051", "postgres://postgres@dl-postgres-service.fusion.svc.cluster.local", "dl"]
+CMD ["5051", "postgres://postgres@postgres-service.fusion.svc.cluster.local", "dl"]
