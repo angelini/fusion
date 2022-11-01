@@ -1,4 +1,6 @@
 write-kubeconfig-mode: "0644"
 tls-san:
   - "fusion.local"
-resolvConf: "/run/systemd/resolve/resolv.conf"
+resolv-conf: "/run/systemd/resolve/resolv.conf"
+disable:
+  - traefik

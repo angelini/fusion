@@ -40,13 +40,11 @@ apiVersion: v1
 kind: Service
 metadata:
   name: dateilager-service
-  annotations:
-    traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
     app.kubernetes.io/name: dateilager
   ports:
-    - name: dl-grpc
+    - name: dateilager-grpc
       protocol: TCP
-      port: 80
+      port: 5051
       targetPort: 5051

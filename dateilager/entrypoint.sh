@@ -73,7 +73,7 @@ main() {
     local secrets="${HOME}/secrets"
 
     log "start dateilager server"
-    "/bin/dateilager-server" --dburi "${appdb}" --port "${port}" \
+    "./dateilager-server" --dburi "${appdb}" --port "${port}" \
         --log-level "${log_level}" \
         --cert "${secrets}/tls/tls.crt" --key "${secrets}/tls/tls.key" \
         --paseto "${secrets}/paseto.pub"

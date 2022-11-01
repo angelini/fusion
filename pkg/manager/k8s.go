@@ -46,10 +46,10 @@ func NewKubeClient(epoch int64, namespace, image string) (*KubeClient, error) {
 	}, nil
 }
 
-func (c *KubeClient) CreateDeployment(ctx context.Context, name string) error {
+func (c *KubeClient) CreateDeployment(ctx context.Context, name string, project int64) error {
 	_, err := c.set.AppsV1().
 		Deployments(c.namespace).
-		Apply(ctx, c.genDeployment(name), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
+		Apply(ctx, c.genDeployment(name, project), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
 	if err != nil {
 		return fmt.Errorf("cannot apply deployment %v: %w", name, err)
 	}
@@ -119,7 +119,7 @@ func (c *KubeClient) GetAllEndpoints(ctx context.Context, name string) ([]string
 	return ips, nil
 }
 
-func (c *KubeClient) genDeployment(name string) *appsconf.DeploymentApplyConfiguration {
+func (c *KubeClient) genDeployment(name string, project int64) *appsconf.DeploymentApplyConfiguration {
 	labels := map[string]string{
 		"fusion/type":  "node",
 		"fusion/name":  name,
@@ -140,7 +140,15 @@ func (c *KubeClient) genDeployment(name string) *appsconf.DeploymentApplyConfigu
 						WithLabels(labels).
 						WithSpec(
 							coreconf.PodSpec().
-								WithContainers(c.genContainer()),
+								WithContainers(c.genContainer(project)).
+								WithVolumes(
+									coreconf.Volume().
+										WithName("workdir").
+										WithEmptyDir(
+											coreconf.EmptyDirVolumeSource().
+												WithMedium(core.StorageMediumMemory),
+										),
+								),
 						),
 				),
 		)
@@ -164,7 +172,7 @@ func (c *KubeClient) genService(name string) *coreconf.ServiceApplyConfiguration
 		)
 }
 
-func (c *KubeClient) genContainer() *coreconf.ContainerApplyConfiguration {
+func (c *KubeClient) genContainer(project int64) *coreconf.ContainerApplyConfiguration {
 	port := coreconf.ContainerPort().
 		WithContainerPort(5152)
 
@@ -173,5 +181,10 @@ func (c *KubeClient) genContainer() *coreconf.ContainerApplyConfiguration {
 		WithImage(c.image).
 		WithImagePullPolicy(core.PullNever).
 		WithPorts(port).
-		WithCommand("./fusion", "sandbox", "-p", "5152")
+		WithCommand("./fusion", "sandbox", "-p", "5152", strconv.FormatInt(project, 10)).
+		WithVolumeMounts(
+			coreconf.VolumeMount().
+				WithName("workdir").
+				WithMountPath("/tmp/fusion"),
+		)
 }

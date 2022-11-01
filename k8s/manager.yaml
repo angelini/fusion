@@ -23,21 +23,27 @@ spec:
           image: localhost/fusion:latest
           imagePullPolicy: Never
           command: ["./fusion"]
-          args: ["manager", "-p", "5152"]
+          args: ["manager", "-p", "5152", "--cert", "secrets/tls/tls.crt", "--key", "secrets/tls/tls.key"]
           ports:
             -  containerPort: 5152
+          volumeMounts:
+            - name: tls-secret
+              mountPath: "/home/main/secrets/tls"
+              readOnly: true
+      volumes:
+        - name: tls-secret
+          secret:
+            secretName: tls-secret
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: fusion-manager-service
-  annotations:
-    traefik.ingress.kubernetes.io/service.serversscheme: h2c
 spec:
   selector:
     app.kubernetes.io/name: fusion-manager
   ports:
     - name: manager-grpc
       protocol: TCP
-      port: 80
+      port: 5152
       targetPort: 5152

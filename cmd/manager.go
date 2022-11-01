@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 
@@ -10,7 +11,11 @@ import (
 )
 
 func NewCmdManager() *cobra.Command {
-	var port int
+	var (
+		port     int
+		certFile string
+		keyFile  string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "manager",
@@ -24,7 +29,12 @@ func NewCmdManager() *cobra.Command {
 				return fmt.Errorf("failed to listen on TCP port %d: %w", port, err)
 			}
 
-			server, err := manager.NewServer(log)
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				return fmt.Errorf("cannot open TLS cert and key files (%s, %s): %w", certFile, keyFile, err)
+			}
+
+			server, err := manager.NewServer(log, &cert, "fusion", "localhost/fusion:latest", "dateilager-server.fusion.svc.cluster.local")
 			if err != nil {
 				return err
 			}
@@ -34,7 +44,10 @@ func NewCmdManager() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentFlags().IntVarP(&port, "port", "p", 5152, "Manager port")
+	flags := cmd.PersistentFlags()
+	flags.IntVarP(&port, "port", "p", 5152, "Manager port")
+	flags.StringVar(&certFile, "cert", "development/server.crt", "TLS cert file")
+	flags.StringVar(&keyFile, "key", "development/server.key", "TLS key file")
 
 	return cmd
 }

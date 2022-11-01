@@ -17,38 +17,38 @@ import (
 type ManagerApi struct {
 	pb.UnimplementedManagerServer
 
-	log       *zap.Logger
-	epoch     int64
-	namespace string
-	image     string
-	client    *KubeClient
+	log        *zap.Logger
+	epoch      int64
+	namespace  string
+	image      string
+	kubeClient *KubeClient
 }
 
-func NewManagerApi(log *zap.Logger, epoch int64, namespace, image string) (*ManagerApi, error) {
-	client, err := NewKubeClient(epoch, namespace, image)
+func NewManagerApi(log *zap.Logger, epoch int64, namespace, image, dlServer string) (*ManagerApi, error) {
+	kubeClient, err := NewKubeClient(epoch, namespace, image)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create k8s client %v [%v]: %w", namespace, image, err)
 	}
 
 	return &ManagerApi{
-		log:       log,
-		epoch:     epoch,
-		namespace: namespace,
-		image:     image,
-		client:    client,
+		log:        log,
+		epoch:      epoch,
+		namespace:  namespace,
+		image:      image,
+		kubeClient: kubeClient,
 	}, nil
 }
 
 func (m *ManagerApi) BootSandbox(ctx context.Context, req *pb.BootSandboxRequest) (*pb.BootSandboxResponse, error) {
-	m.log.Info("boot sandbox start", zap.Int64("project", req.Project))
+	m.log.Info("boot sandbox", zap.Int64("project", req.Project))
 	name := m.name(req.Project)
 
-	err := m.client.CreateDeployment(ctx, name)
+	err := m.kubeClient.CreateDeployment(ctx, name, req.Project)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Manager failed to boot %v: %v", name, err)
 	}
 
-	err = m.client.WaitForEndpoint(ctx, name)
+	err = m.kubeClient.WaitForEndpoint(ctx, name)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Manager failed to wait for %v: %v", name, err)
 	}
@@ -60,9 +60,10 @@ func (m *ManagerApi) BootSandbox(ctx context.Context, req *pb.BootSandboxRequest
 }
 
 func (m *ManagerApi) SetVersion(ctx context.Context, req *pb.SetVersionRequest) (*pb.SetVersionResponse, error) {
+	m.log.Info("set version", zap.Int64("project", req.Project), zap.Int64("version", req.Version))
 	name := m.name(req.Project)
 
-	ips, err := m.client.GetAllEndpoints(ctx, name)
+	ips, err := m.kubeClient.GetAllEndpoints(ctx, name)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Manager failed to list endpoints %v: %v", name, err)
 	}
@@ -96,6 +97,7 @@ func (m *ManagerApi) SetVersion(ctx context.Context, req *pb.SetVersionRequest) 
 }
 
 func (m *ManagerApi) CheckHealth(ctx context.Context, req *pb.CheckHealthRequest) (*pb.CheckHealthResponse, error) {
+	m.log.Info("check health", zap.Int64("project", req.Project))
 	name := m.name(req.Project)
 	client := &http.Client{}
 

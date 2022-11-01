@@ -12,7 +12,12 @@ RUN useradd -ms /bin/bash main
 USER main
 WORKDIR /home/main
 
+VOLUME /tmp/fusion
+
+RUN mkdir -p secrets
+VOLUME secrets/tls
+
+COPY development/paseto.pub secrets/paseto.pub
 COPY bin/fusion fusion
-COPY script.mjs script.mjs
 
 ENTRYPOINT fusion
