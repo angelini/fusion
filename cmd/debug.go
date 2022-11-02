@@ -40,6 +40,8 @@ func NewCmdDebug() *cobra.Command {
 				return err
 			}
 
+			log.Info("DL project updated", zap.Int("project", 123), zap.Int64("version", version))
+
 			bootResp, err := managerClient.BootSandbox(ctx, &pb.BootSandboxRequest{
 				Project: 123,
 			})
@@ -54,14 +56,14 @@ func NewCmdDebug() *cobra.Command {
 				Version: version,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to set sandbox version: %w", err)
 			}
 
 			healthResp, err := managerClient.CheckHealth(ctx, &pb.CheckHealthRequest{
 				Project: 123,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to check sandbox health: %w", err)
 			}
 
 			status := "unhealthy"

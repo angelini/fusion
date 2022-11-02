@@ -7,11 +7,13 @@ import (
 	"time"
 
 	core "k8s.io/api/core/v1"
+	net "k8s.io/api/networking/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	appsconf "k8s.io/client-go/applyconfigurations/apps/v1"
 	coreconf "k8s.io/client-go/applyconfigurations/core/v1"
 	metaconf "k8s.io/client-go/applyconfigurations/meta/v1"
+	netconf "k8s.io/client-go/applyconfigurations/networking/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -59,6 +61,13 @@ func (c *KubeClient) CreateDeployment(ctx context.Context, name string, project 
 		Apply(ctx, c.genService(name), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
 	if err != nil {
 		return fmt.Errorf("cannot apply service %v: %w", name, err)
+	}
+
+	_, err = c.set.NetworkingV1().
+		Ingresses(c.namespace).
+		Apply(ctx, c.genIngress(name), meta.ApplyOptions{FieldManager: FIELD_MANAGER})
+	if err != nil {
+		return fmt.Errorf("cannot apply ingress %v: %w", name, err)
 	}
 
 	return nil
@@ -168,6 +177,34 @@ func (c *KubeClient) genService(name string) *coreconf.ServiceApplyConfiguration
 						WithProtocol(core.ProtocolTCP).
 						WithPort(80).
 						WithTargetPort(intstr.FromInt(5152)),
+				),
+		)
+}
+
+func (c *KubeClient) genIngress(name string) *netconf.IngressApplyConfiguration {
+	return netconf.Ingress(name, c.namespace).
+		WithSpec(
+			netconf.IngressSpec().
+				WithIngressClassName("nginx").
+				WithRules(
+					netconf.IngressRule().
+						WithHost(fmt.Sprintf("%s.fusion.dev", name)).
+						WithHTTP(
+							netconf.HTTPIngressRuleValue().
+								WithPaths(
+									netconf.HTTPIngressPath().
+										WithPath("/").
+										WithPathType(net.PathTypePrefix).
+										WithBackend(
+											netconf.IngressBackend().
+												WithService(
+													netconf.IngressServiceBackend().
+														WithName(name).
+														WithPort(netconf.ServiceBackendPort().WithNumber(80)),
+												),
+										),
+								),
+						),
 				),
 		)
 }

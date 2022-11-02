@@ -153,7 +153,7 @@ status:
 
 debug: export DL_TOKEN_FILE=development/admin.token
 debug: development/admin.token
-	$(KC) delete --ignore-not-found deployment abc
+	$(KC) delete --ignore-not-found deployment s-123
 	go run main.go debug
 
 clean:
