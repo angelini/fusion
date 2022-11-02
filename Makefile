@@ -109,6 +109,7 @@ start-k3s:
 teardown:
 	@$(KC) delete all --all --force --grace-period=0 1> /dev/null
 	@$(KC) delete secret --ignore-not-found tls-secret 1> /dev/null
+	@$(KC) delete secret --ignore-not-found dl-admin-token 1> /dev/null
 
 setup: teardown build
 	@sudo echo "Ensure sudo"
@@ -120,6 +121,7 @@ setup: teardown build
 	$(KC_NO_NS) apply -f development/nginx.yaml
 	$(KC_NO_NS) apply -f k8s/namespace.yaml
 	$(KC) create secret tls tls-secret --cert=development/local.cert --key=development/local.key
+	$(KC) create secret generic dl-admin-token --from-file=development/admin.token
 	$(KC) apply -f k8s/role.yaml
 	$(KC) apply -f k8s/postgres.yaml
 	$(KC) apply -f k8s/dateilager.yaml

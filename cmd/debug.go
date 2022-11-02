@@ -1,18 +1,14 @@
 package cmd
 
 import (
-	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
-	"time"
+	"os"
 
 	"github.com/angelini/fusion/internal/pb"
+	"github.com/angelini/fusion/pkg/manager"
 	dlc "github.com/gadget-inc/dateilager/pkg/client"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 func NewCmdDebug() *cobra.Command {
@@ -28,7 +24,7 @@ func NewCmdDebug() *cobra.Command {
 				return fmt.Errorf("failed to create dl client: %w", err)
 			}
 
-			managerClient, err := newManagerClient(ctx, log, "fusion-manager.localdomain:443")
+			managerClient, err := manager.NewClient(ctx, log, "fusion-manager.localdomain:443")
 			if err != nil {
 				return fmt.Errorf("failed to create manager client: %w", err)
 			}
@@ -38,12 +34,12 @@ func NewCmdDebug() *cobra.Command {
 				return err
 			}
 
-			version, _, err := dlClient.Update(ctx, 123, "example.mjs")
+			os.RemoveAll("./example/.dl")
+			version, _, err := dlClient.Update(ctx, 123, "./example")
 			if err != nil {
 				return err
 			}
 
-			// FIXME: Include the DL_TOKEN in this sandbox
 			bootResp, err := managerClient.BootSandbox(ctx, &pb.BootSandboxRequest{
 				Project: 123,
 			})
@@ -75,43 +71,8 @@ func NewCmdDebug() *cobra.Command {
 
 			log.Info("sandbox health", zap.String("status", status))
 			return nil
-
-			// netLoc, err := manager.CreateDeployment(ctx, 1, "abc")
-			// if err != nil {
-			// 	return err
-			// }
-
-			// log.Info("debug result", zap.String("host", netLoc.Host))
-			// return nil
-
-			// err := manager.DeleteDeployment(ctx, "abc")
-			// if err != nil {
-			// 	return err
-			// }
-
-			// log.Info("debug result")
-			// return nil
 		},
 	}
 
 	return cmd
-}
-
-func newManagerClient(ctx context.Context, log *zap.Logger, server string) (pb.ManagerClient, error) {
-	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	pool, err := x509.SystemCertPool()
-	if err != nil {
-		return nil, fmt.Errorf("load system cert pool: %w", err)
-	}
-
-	creds := credentials.NewTLS(&tls.Config{RootCAs: pool})
-
-	conn, err := grpc.DialContext(connectCtx, server, grpc.WithTransportCredentials(creds))
-	if err != nil {
-		return nil, fmt.Errorf("cannot connect to grpc server %v: %w", server, err)
-	}
-
-	return pb.NewManagerClient(conn), nil
 }

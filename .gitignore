@@ -3,3 +3,4 @@ development/
 dateilager.tar
 fusion.tar
 internal/pb/*.go
+example/.dl

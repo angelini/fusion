@@ -186,5 +186,22 @@ func (c *KubeClient) genContainer(project int64) *coreconf.ContainerApplyConfigu
 			coreconf.VolumeMount().
 				WithName("workdir").
 				WithMountPath("/tmp/fusion"),
+		).
+		WithEnv(
+			coreconf.EnvVar().
+				WithName("DL_SKIP_SSL_VERIFICATION").
+				WithValue("1"),
+		).
+		WithEnv(
+			coreconf.EnvVar().
+				WithName("DL_TOKEN").
+				WithValueFrom(
+					coreconf.EnvVarSource().
+						WithSecretKeyRef(
+							coreconf.SecretKeySelector().
+								WithName("dl-admin-token").
+								WithKey("admin.token"),
+						),
+				),
 		)
 }

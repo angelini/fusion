@@ -28,12 +28,12 @@ func NewCmdSandbox() *cobra.Command {
 			}
 
 			command := sandbox.NewCommand("node", []string{"/tmp/fusion/script.mjs"}, "/tmp/fusion")
-			manager, err := sandbox.NewManager(ctx, log, "127.0.0.1", "dateilager-server.fusion.svc.cluster.local", project, command, 8000)
+			controller, err := sandbox.NewController(ctx, log, "127.0.0.1", "dateilager-service.fusion.svc.cluster.local:5051", project, command, 8000)
 			if err != nil {
 				return err
 			}
 
-			return sandbox.StartProxy(ctx, log, manager, port)
+			return sandbox.StartProxy(ctx, log, controller, port)
 		},
 	}
 

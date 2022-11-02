@@ -35,7 +35,7 @@ type VersionRequest struct {
 	Version int64
 }
 
-func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPort int) error {
+func StartProxy(ctx context.Context, log *zap.Logger, controller *Controller, serverPort int) error {
 	httpClient := &http.Client{
 		Timeout: PROXY_REQUEST_READ_TIMEOUT,
 	}
@@ -51,7 +51,7 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 			return
 		}
 
-		err = manager.StartProcess(ctx, versionReq.Version)
+		err = controller.StartProcess(ctx, versionReq.Version)
 		if err != nil {
 			httpErr(log, resp, err, "failed to start process")
 			return
@@ -66,7 +66,7 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 
 		log.Info("incoming request", zap.String("url", req.URL.String()))
 
-		portChan := manager.LivePortChannel(reqCtx)
+		portChan := controller.LivePortChannel(reqCtx)
 
 		select {
 		case <-time.After(PROXY_REQUEST_READ_TIMEOUT):
@@ -79,7 +79,7 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 				return
 			}
 
-			url := fmt.Sprintf("http://%s:%d%s", manager.Host, port, req.URL.String())
+			url := fmt.Sprintf("http://%s:%d%s", controller.Host, port, req.URL.String())
 			proxyReq, err := http.NewRequest(req.Method, url, bytes.NewReader(body))
 			if err != nil {
 				httpErr(log, resp, err, "failed to create proxy request")
@@ -94,8 +94,8 @@ func StartProxy(ctx context.Context, log *zap.Logger, manager *Manager, serverPo
 				appendHostToXForwardHeader(req.Header, remoteHost)
 			}
 
-			manager.IncrementRequestCounter(port)
-			defer manager.DecrementRequestCounter(port)
+			controller.IncrementRequestCounter(port)
+			defer controller.DecrementRequestCounter(port)
 
 			proxyResp, err := httpClient.Do(proxyReq)
 			if err != nil {
