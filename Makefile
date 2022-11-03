@@ -150,11 +150,19 @@ status:
 	$(call spacer)
 	@$(KC) get ingresses -o wide
 
+project ?= 1
 
-debug: export DL_TOKEN_FILE=development/admin.token
-debug: development/admin.token
-	$(KC) delete --ignore-not-found deployment s-123
-	go run main.go debug
+debug-create: export DL_TOKEN_FILE=development/admin.token
+debug-create: development/admin.token
+	go run main.go debug --mode create --project $(project)
+
+debug-update: export DL_TOKEN_FILE=development/admin.token
+debug-update: development/admin.token
+ifndef dir
+	$(error dir variable must be set)
+else
+	go run main.go debug --mode update --project $(project) --dir $(dir)
+endif
 
 clean:
 	$(CTR) images ls -q | grep localhost/fusion@sha | xargs sudo bin/k3s ctr images rm

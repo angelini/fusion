@@ -12,13 +12,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  setTimeout(() => {
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "text/plain");
-    res.end(
-      `hello from port: ${process.env.PR_PORT}, version: ${process.env.PR_VERSION}`
-    );
-  }, 500); // Simulate a slow response.
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "text/plain");
+  res.end(
+    `hello from port: ${process.env.PR_PORT}, version: ${process.env.PR_VERSION}`
+  );
 });
 
 server.listen(port, hostname, () => {
