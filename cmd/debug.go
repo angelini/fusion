@@ -29,7 +29,7 @@ func NewCmdDebug() *cobra.Command {
 				return fmt.Errorf("failed to create manager client: %w", err)
 			}
 
-			err = dlClient.NewProject(ctx, 123, nil, "")
+			err = dlClient.NewProject(ctx, 123, nil, nil)
 			if err != nil {
 				return err
 			}
@@ -72,6 +72,36 @@ func NewCmdDebug() *cobra.Command {
 			}
 
 			log.Info("sandbox health", zap.String("status", status))
+
+			version, _, err = dlClient.Update(ctx, 123, "./example-2")
+			if err != nil {
+				return err
+			}
+
+			log.Info("DL project updated", zap.Int("project", 123), zap.Int64("version", version))
+
+			_, err = managerClient.SetVersion(ctx, &pb.SetVersionRequest{
+				Project: 123,
+				Version: version,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to set sandbox version: %w", err)
+			}
+
+			healthResp, err = managerClient.CheckHealth(ctx, &pb.CheckHealthRequest{
+				Project: 123,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to check sandbox health: %w", err)
+			}
+
+			status = "unhealthy"
+			if healthResp.Status == pb.CheckHealthResponse_HEALTHY {
+				status = "healthy"
+			}
+
+			log.Info("sandbox health", zap.String("status", status))
+
 			return nil
 		},
 	}

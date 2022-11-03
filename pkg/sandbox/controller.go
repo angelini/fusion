@@ -222,7 +222,7 @@ func (c *Controller) StartProcess(ctx context.Context, version int64) error {
 	}
 	port := c.portStart + c.portOffset
 
-	_, _, err = c.dlClient.Rebuild(ctx, c.project, "", &version, c.command.WorkDir)
+	_, _, err = c.dlClient.Rebuild(ctx, c.project, "", &version, c.command.WorkDir, "/tmp")
 	if err != nil {
 		return fmt.Errorf("failed to rebuild workdir to version %v: %w", version, err)
 	}
