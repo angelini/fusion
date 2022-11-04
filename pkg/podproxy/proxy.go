@@ -206,5 +206,5 @@ func verifyAuthorization(header http.Header, project int64, publicKey ed25519.Pu
 		return false, fmt.Errorf("cannot verify authorization header: %w", err)
 	}
 
-	return payload.Subject == strconv.FormatInt(project, 10), nil
+	return payload.Subject == strconv.FormatInt(project, 10) || payload.Subject == "admin", nil
 }

@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func createProject(ctx context.Context, log *zap.Logger, dlClient *dlc.Client, managerClient pb.ManagerClient, project int64) error {
+func createProject(ctx context.Context, log *zap.Logger, dlClient *dlc.Client, managerClient pb.ManagerClient, project int64, dir string) error {
 	err := dlClient.NewProject(ctx, project, nil, nil)
 	if err != nil {
 		return err
@@ -19,14 +19,36 @@ func createProject(ctx context.Context, log *zap.Logger, dlClient *dlc.Client, m
 
 	log.Info("dl project created", zap.Int64("project", project))
 
+	version, _, err := dlClient.Update(ctx, project, dir)
+	if err != nil {
+		return err
+	}
+
+	log.Info("dl fs updated", zap.Int64("project", project), zap.Int64("version", version))
+
 	bootResp, err := managerClient.BootSandbox(ctx, &pb.BootSandboxRequest{
 		Project: project,
+		Version: &version,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to boot sandbox: %w", err)
 	}
 
 	log.Info("sandbox booted", zap.Int64("epoch", bootResp.Epoch), zap.String("host", bootResp.Host), zap.Int32("port", bootResp.Port))
+
+	healthResp, err := managerClient.CheckHealth(ctx, &pb.CheckHealthRequest{
+		Project: project,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to check sandbox health: %w", err)
+	}
+
+	status := "unhealthy"
+	if healthResp.Status == pb.CheckHealthResponse_HEALTHY {
+		status = "healthy"
+	}
+
+	log.Info("sandbox health", zap.String("status", status))
 
 	return nil
 }
@@ -41,7 +63,7 @@ func updateProject(ctx context.Context, log *zap.Logger, dlClient *dlc.Client, m
 
 	_, err = managerClient.SetVersion(ctx, &pb.SetVersionRequest{
 		Project: project,
-		Version: version,
+		Version: &version,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to set sandbox version: %w", err)
@@ -80,6 +102,10 @@ func NewCmdDebug() *cobra.Command {
 			ctx := cmd.Context()
 			log := ctx.Value(logKey).(*zap.Logger)
 
+			if dir == "" {
+				log.Fatal("--dir cannot be emtpy")
+			}
+
 			dlClient, err := dlc.NewClient(ctx, "dateilager.localdomain:443")
 			if err != nil {
 				return fmt.Errorf("failed to create dl client: %w", err)
@@ -92,11 +118,8 @@ func NewCmdDebug() *cobra.Command {
 
 			switch mode {
 			case "create":
-				return createProject(ctx, log, dlClient, managerClient, project)
+				return createProject(ctx, log, dlClient, managerClient, project, dir)
 			case "update":
-				if dir == "" {
-					log.Fatal("--dir cannot be emtpy")
-				}
 				return updateProject(ctx, log, dlClient, managerClient, project, dir)
 			default:
 				log.Fatal("--mode must be either 'create' or 'update'")
@@ -114,6 +137,7 @@ func NewCmdDebug() *cobra.Command {
 
 	cmd.MarkFlagRequired("mode")
 	cmd.MarkFlagRequired("project")
+	cmd.MarkFlagRequired("dir")
 
 	return cmd
 }

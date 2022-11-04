@@ -210,10 +210,10 @@ func (c *Controller) setCurrent(port int) {
 	c.next = nil
 }
 
-func (c *Controller) StartProcess(ctx context.Context, version int64) error {
+func (c *Controller) StartProcess(ctx context.Context, targetVersion *int64) (int64, error) {
 	err := c.killNextIfRunning()
 	if err != nil {
-		return fmt.Errorf("failed to kill concurrent next process: %w", err)
+		return -1, fmt.Errorf("failed to kill concurrent next process: %w", err)
 	}
 
 	c.portOffset += 1
@@ -222,20 +222,20 @@ func (c *Controller) StartProcess(ctx context.Context, version int64) error {
 	}
 	port := c.portStart + c.portOffset
 
-	_, _, err = c.dlClient.Rebuild(ctx, c.project, "", &version, c.command.WorkDir, "/tmp")
+	version, _, err := c.dlClient.Rebuild(ctx, c.project, "", targetVersion, c.command.WorkDir, "/tmp")
 	if err != nil {
-		return fmt.Errorf("failed to rebuild workdir to version %v: %w", version, err)
+		return -1, fmt.Errorf("failed to rebuild workdir to version %v: %w", version, err)
 	}
 
 	proc := NewProcess(c.log, c.command.Exec, c.command.Args[0], port, version)
 
 	err = proc.Run(ctx)
 	if err != nil {
-		return err
+		return -1, err
 	}
 
 	c.setNext(proc)
-	return nil
+	return version, nil
 }
 
 func (c *Controller) IncrementRequestCounter(port int) {

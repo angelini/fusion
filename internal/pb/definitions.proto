@@ -1,4 +1,4 @@
-syntax = "proto3";
+    syntax = "proto3";
 
 package pb;
 
@@ -14,6 +14,7 @@ service Manager {
 
 message BootSandboxRequest {
     int64 project = 1;
+    optional int64 version = 2;
 }
 
 message BootSandboxResponse {
@@ -24,7 +25,7 @@ message BootSandboxResponse {
 
 message SetVersionRequest {
     int64 project = 1;
-    int64 version = 2;
+    optional int64 version = 2;
 }
 
 message SetVersionResponse {}

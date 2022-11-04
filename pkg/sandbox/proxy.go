@@ -32,7 +32,7 @@ var hopHeaders = map[string]bool{
 }
 
 type VersionRequest struct {
-	Version int64
+	Version *int64
 }
 
 func StartProxy(ctx context.Context, log *zap.Logger, controller *Controller, serverPort int) error {
@@ -51,13 +51,13 @@ func StartProxy(ctx context.Context, log *zap.Logger, controller *Controller, se
 			return
 		}
 
-		err = controller.StartProcess(ctx, versionReq.Version)
+		version, err := controller.StartProcess(ctx, versionReq.Version)
 		if err != nil {
 			httpErr(log, resp, err, "failed to start process")
 			return
 		}
 
-		fmt.Fprintf(resp, "Version: %d", versionReq.Version)
+		fmt.Fprintf(resp, "Version: %d", version)
 	})
 
 	http.HandleFunc("/", func(resp http.ResponseWriter, req *http.Request) {

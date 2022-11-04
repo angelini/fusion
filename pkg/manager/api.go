@@ -6,12 +6,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/angelini/fusion/internal/pb"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+const (
+	HEALTH_CHECK_ATTEMPTS = 5
 )
 
 type ManagerApi struct {
@@ -45,12 +51,17 @@ func (m *ManagerApi) BootSandbox(ctx context.Context, req *pb.BootSandboxRequest
 
 	err := m.kubeClient.CreateDeployment(ctx, name, req.Project)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Manager failed to boot %v: %v", name, err)
+		return nil, status.Errorf(codes.Internal, "Manager.BootSandbox failed to boot %v: %v", name, err)
 	}
 
 	err = m.kubeClient.WaitForEndpoint(ctx, name)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Manager failed to wait for %v: %v", name, err)
+		return nil, status.Errorf(codes.Internal, "Manager.BootSandbox failed to wait for %v: %v", name, err)
+	}
+
+	err = m.updateAllEndpoints(ctx, name, req.Version)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Manager.BootSandbox failed to update versions %v: %v", name, err)
 	}
 
 	return &pb.BootSandboxResponse{
@@ -60,35 +71,10 @@ func (m *ManagerApi) BootSandbox(ctx context.Context, req *pb.BootSandboxRequest
 }
 
 func (m *ManagerApi) SetVersion(ctx context.Context, req *pb.SetVersionRequest) (*pb.SetVersionResponse, error) {
-	m.log.Info("set version", zap.Int64("project", req.Project), zap.Int64("version", req.Version))
+	m.log.Info("set version", zap.Int64("project", req.Project), zap.Int64p("version", req.Version))
 	name := m.name(req.Project)
 
-	ips, err := m.kubeClient.GetAllEndpoints(ctx, name)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Manager failed to list endpoints %v: %v", name, err)
-	}
-
-	client := &http.Client{}
-	group, _ := errgroup.WithContext(ctx)
-
-	for _, ip := range ips {
-		ip := ip
-		if ip == "" {
-			continue
-		}
-
-		group.Go(func() error {
-			version, err := json.Marshal(map[string]int64{"version": req.Version})
-			if err != nil {
-				return err
-			}
-
-			_, err = client.Post(fmt.Sprintf("http://%s:5152/__meta__/version", ip), "application/json", bytes.NewBuffer(version))
-			return err
-		})
-	}
-
-	err = group.Wait()
+	err := m.updateAllEndpoints(ctx, name, req.Version)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Manager failed to update versions %v: %v", name, err)
 	}
@@ -99,10 +85,21 @@ func (m *ManagerApi) SetVersion(ctx context.Context, req *pb.SetVersionRequest) 
 func (m *ManagerApi) CheckHealth(ctx context.Context, req *pb.CheckHealthRequest) (*pb.CheckHealthResponse, error) {
 	m.log.Info("check health", zap.Int64("project", req.Project))
 	name := m.name(req.Project)
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 200 * time.Millisecond,
+	}
 
-	resp, err := client.Get(fmt.Sprintf("http://%s/health", m.hostname(name)))
-	if err != nil {
+	var resp *http.Response
+	var err error
+
+	for idx := 0; idx < HEALTH_CHECK_ATTEMPTS; idx++ {
+		resp, err = client.Get(fmt.Sprintf("http://%s/health", m.hostname(name)))
+		if err == nil {
+			break
+		}
+		if os.IsTimeout(err) && idx < HEALTH_CHECK_ATTEMPTS-1 {
+			continue
+		}
 		return nil, status.Errorf(codes.Internal, "Manager failed to run health check %v: %v", name, err)
 	}
 
@@ -123,4 +120,34 @@ func (m *ManagerApi) hostname(name string) string {
 
 func (m *ManagerApi) name(project int64) string {
 	return fmt.Sprintf("s-%d", project)
+}
+
+func (m *ManagerApi) updateAllEndpoints(ctx context.Context, name string, version *int64) error {
+	ips, err := m.kubeClient.GetAllEndpoints(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+	group, _ := errgroup.WithContext(ctx)
+
+	for _, ip := range ips {
+		ip := ip
+		if ip == "" {
+			continue
+		}
+
+		version, err := json.Marshal(map[string]*int64{"version": version})
+		if err != nil {
+			return err
+		}
+		body := bytes.NewBuffer(version)
+
+		group.Go(func() error {
+			_, err = client.Post(fmt.Sprintf("http://%s:5152/__meta__/version", ip), "application/json", body)
+			return err
+		})
+	}
+
+	return group.Wait()
 }

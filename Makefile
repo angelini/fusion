@@ -37,6 +37,7 @@ endef
 
 .PHONY: install build start-k3s setup teardown logs status debug clean
 .PHONY: build-dateilager push-dateilager
+.PHONY: debug-create debug-update debug-get
 
 bin/k3s: development/nginx.yaml
 	@mkdir -p bin
@@ -151,18 +152,21 @@ status:
 	@$(KC) get ingresses -o wide
 
 project ?= 1
+dir ?= example
 
 debug-create: export DL_TOKEN_FILE=development/admin.token
 debug-create: development/admin.token
-	go run main.go debug --mode create --project $(project)
+	$(call section, Debug create)
+	go run main.go debug --mode create --project $(project) --dir $(dir)
 
 debug-update: export DL_TOKEN_FILE=development/admin.token
 debug-update: development/admin.token
-ifndef dir
-	$(error dir variable must be set)
-else
+	$(call section, Debug update)
 	go run main.go debug --mode update --project $(project) --dir $(dir)
-endif
+
+debug-get: development/admin.token
+	$(call section, Debug get)
+	curl -i -H "X-Fusion-Project: $(project)" -H "Authorization: Bearer $(shell cat development/admin.token)" fusion-podproxy.localdomain
 
 clean:
 	$(CTR) images ls -q | grep localhost/fusion@sha | xargs sudo bin/k3s ctr images rm
